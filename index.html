@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlinkEdge - Voice Resume Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #fff, #e0e0e0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-listening {
+            background: #4CAF50;
+        }
+
+        .status-speaking {
+            background: #2196F3;
+        }
+
+        .status-processing {
+            background: #FF9800;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .current-page {
+            font-size: 1.2em;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .question-display {
+            font-size: 1.1em;
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .voice-commands {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            font-size: 0.9em;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #2196F3);
+            transition: width 0.3s ease;
+        }
+
+        .resume-preview {
+            text-align: left;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .accessibility-note {
+            font-size: 0.8em;
+            opacity: 0.8;
+            margin-top: 20px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 BlinkEdge</h1>
+        <div class="accessibility-note">Voice-Only Resume Builder for Blind Users</div>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        
+        <div class="current-page" id="currentPage">
+            🟣 Page 1: Introduction
+        </div>
+        
+        <div class="question-display" id="questionDisplay">
+            <span class="status-indicator status-speaking" id="statusIndicator"></span>
+            <span id="currentQuestion">Ready to begin...</span>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn">Start BlinkEdge</button>
+            <button id="listenBtn" disabled>Listen</button>
+            <button id="repeatBtn" disabled>Repeat</button>
+            <button id="pauseBtn" disabled>Pause</button>
+            <button id="restartBtn" disabled>Restart Page</button>
+        </div>
+        
+        <div class="voice-commands">
+            <strong>Voice Commands:</strong><br>
+            Say "Repeat" to hear the question again<br>
+            Say "Restart" to restart the current page<br>
+            Say "Pause" to pause (say "Continue" to resume)<br>
+            Say "Exit" to end the session
+        </div>
+        
+        <div class="resume-preview" id="resumePreview" style="display: none;"></div>
+    </div>
+
+    <script>
+        class BlinkEdgeAgent {
+            constructor() {
+                this.currentPage = 1;
+                this.currentQuestion = 0;
+                this.isPaused = false;
+                this.isListening = false;
+                this.userData = {};
+                this.resumeData = {
+                    personal: {},
+                    education: {},
+                    experience: {},
+                    skills: {},
+                    projects: {},
+                    certificates: {}
+                };
+                
+                this.pages = {
+                    1: { name: "Introduction", color: "🟣", questions: [] },
+                    2: { name: "Sign-Up", color: "🟡", questions: [
+                        "What is your full name?",
+                        "What email would you like to sign up with?",
+                        "Please say a password. The system will store it securely.",
+                        "What is your phone number?",
+                        "Do you agree to continue with resume creation?"
+                    ]},
+                    3: { name: "Resume Creation", color: "🟢", questions: [
+                        "What is your highest qualification?",
+                        "Where did you study?",
+                        "When did you start and finish your education?",
+                        "What is your latest job title?",
+                        "What was the company name?",
+                        "What were your key responsibilities?",
+                        "When did you work there?",
+                        "What technical skills do you have?",
+                        "What soft skills would you like to mention?",
+                        "Do you want to add any projects?",
+                        "Do you have any certificates or documents to verify your work?"
+                    ]},
+                    4: { name: "Resume Preview & Finalization", color: "🔵", questions: [] }
+                };
+                
+                this.responses = [];
+                this.initializeElements();
+                this.setupVoiceRecognition();
+                this.setupTextToSpeech();
+            }
+            
+            initializeElements() {
+                this.elements = {
+                    startBtn: document.getElementById('startBtn'),
+                    listenBtn: document.getElementById('listenBtn'),
+                    repeatBtn: document.getElementById('repeatBtn'),
+                    pauseBtn: document.getElementById('pauseBtn'),
+                    restartBtn: document.getElementById('restartBtn'),
+                    currentPage: document.getElementById('currentPage'),
+                    questionDisplay: document.getElementById('questionDisplay'),
+                    currentQuestion: document.getElementById('currentQuestion'),
+                    statusIndicator: document.getElementById('statusIndicator'),
+                    progressFill: document.getElementById('progressFill'),
+                    resumePreview: document.getElementById('resumePreview')
+                };
+                
+                this.elements.startBtn.addEventListener('click', () => this.startSession());
+                this.elements.listenBtn.addEventListener('click', () => this.startListening());
+                this.elements.repeatBtn.addEventListener('click', () => this.repeatQuestion());
+                this.elements.pauseBtn.addEventListener('click', () => this.pauseSession());
+                this.elements.restartBtn.addEventListener('click', () => this.restartPage());
+            }
+            
+            setupVoiceRecognition() {
+                if ('webkitSpeechRecognition' in window) {
+                    this.recognition = new webkitSpeechRecognition();
+                    this.recognition.continuous = false;
+                    this.recognition.interimResults = false;
+                    this.recognition.lang = 'en-US';
+                    
+                    this.recognition.onstart = () => {
+                        this.isListening = true;
+                        this.updateStatus('listening');
+                    };
+                    
+                    this.recognition.onresult = (event) => {
+                        const transcript = event.results[0][0].transcript.toLowerCase().trim();
+                        this.processVoiceInput(transcript);
+                    };
+                    
+                    this.recognition.onerror = (event) => {
+                        console.error('Speech recognition error:', event.error);
+                        this.speak("I'm sorry, I didn't catch that. Please try again.");
+                        this.isListening = false;
+                        this.updateStatus('speaking');
+                    };
+                    
+                    this.recognition.onend = () => {
+                        this.isListening = false;
+                        this.updateStatus('processing');
+                    };
+                } else {
+                    console.error('Speech recognition not supported');
+                    this.speak("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
+                }
+            }
+            
+            setupTextToSpeech() {
+                this.synth = window.speechSynthesis;
+                this.voice = null;
+                
+                // Wait for voices to load
+                if (this.synth.getVoices().length === 0) {
+                    this.synth.addEventListener('voiceschanged', () => {
+                        this.selectVoice();
+                    });
+                } else {
+                    this.selectVoice();
+                }
+            }
+            
+            selectVoice() {
+                const voices = this.synth.getVoices();
+                this.voice = voices.find(voice => voice.lang === 'en-US' && voice.name.includes('Female')) || voices[0];
+            }
+            
+            speak(text) {
+                this.synth.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.voice = this.voice;
+                utterance.rate = 0.8;
+                utterance.pitch = 1;
+                utterance.volume = 1;
+                
+                utterance.onstart = () => {
+                    this.updateStatus('speaking');
+                };
+                
+                utterance.onend = () => {
+                    this.updateStatus('listening');
+                    if (!this.isPaused && this.currentPage > 1) {
+                        setTimeout(() => this.startListening(), 1000);
+                    }
+                };
+                
+                this.synth.speak(utterance);
+            }
+            
+            updateStatus(status) {
+                const indicator = this.elements.statusIndicator;
+                indicator.className = `status-indicator status-${status}`;
+                
+                const buttons = [this.elements.listenBtn, this.elements.repeatBtn, this.elements.pauseBtn, this.elements.restartBtn];
+                buttons.forEach(btn => btn.disabled = status === 'speaking');
+            }
+            
+            updateProgress() {
+                const totalPages = 4;
+                const progress = (this.currentPage / totalPages) * 100;
+                this.elements.progressFill.style.width = `${progress}%`;
+            }
+            
+            startSession() {
+                this.currentPage = 1;
+                this.currentQuestion = 0;
+                this.responses = [];
+                this.elements.startBtn.style.display = 'none';
+                this.elements.listenBtn.disabled = false;
+                this.elements.repeatBtn.disabled = false;
+                this.elements.pauseBtn.disabled = false;
+                this.elements.restartBtn.disabled = false;
+                
+                this.showPage1();
+            }
+            
+            showPage1() {
+                this.updatePageDisplay(1);
+                this.elements.currentQuestion.textContent = "Welcome to BlinkEdge";
+                this.speak("Hello, and welcome to BlinkEdge. I'm here to help you build your resume using just your voice. I'm your voice-guided assistant, and together we'll create a professional, ATS-friendly resume that works perfectly with screen readers. Everything we do will be through our conversation - no typing, clicking, or visual elements needed. Let's continue to the next step — your sign-up.");
+                
+                setTimeout(() => {
+                    this.moveToNextPage();
+                }, 8000);
+            }
+            
+            showPage2() {
+                this.updatePageDisplay(2);
+                this.currentQuestion = 0;
+                this.askCurrentQuestion();
+            }
+            
+            showPage3() {
+                this.updatePageDisplay(3);
+                this.currentQuestion = 0;
+                this.askCurrentQuestion();
+            }
+            
+            showPage4() {
+                this.updatePageDisplay(4);
+                this.elements.currentQuestion.textContent = "Reviewing your resume...";
+                this.speak("I will now read your resume aloud so you can confirm it.");
+                
+                setTimeout(() => {
+                    this.generateAndReadResume();
+                }, 2000);
+            }
+            
+            updatePageDisplay(pageNum) {
+                this.currentPage = pageNum;
+                const page = this.pages[pageNum];
+                this.elements.currentPage.textContent = `${page.color} Page ${pageNum}: ${page.name}`;
+                this.updateProgress();
+            }
+            
+            askCurrentQuestion() {
+                if (this.currentPage === 1 || this.currentPage === 4) return;
+                
+                const questions = this.pages[this.currentPage].questions;
+                if (this.currentQuestion < questions.length) {
+                    const question = questions[this.currentQuestion];
+                    this.elements.currentQuestion.textContent = question;
+                    this.speak(question);
+                } else {
+                    this.moveToNextPage();
+                }
+            }
+            
+            processVoiceInput(transcript) {
+                // Handle voice commands
+                if (transcript.includes('repeat')) {
+                    this.repeatQuestion();
+                    return;
+                }
+                
+                if (transcript.includes('restart')) {
+                    this.restartPage();
+                    return;
+                }
+                
+                if (transcript.includes('pause')) {
+                    this.pauseSession();
+                    return;
+                }
+                
+                if (transcript.includes('continue') && this.isPaused) {
+                    this.resumeSession();
+                    return;
+                }
+                
+                if (transcript.includes('exit')) {
+                    this.endSession();
+                    return;
+                }
+                
+                // Process actual answers
+                this.responses.push(transcript);
+                this.speak("Thank you. Here's the next question.");
+                
+                setTimeout(() => {
+                    this.currentQuestion++;
+                    this.askCurrentQuestion();
+                }, 2000);
+            }
+            
+            repeatQuestion() {
+                if (this.currentPage > 1 && this.currentPage < 4) {
+                    this.askCurrentQuestion();
+                }
+            }
+            
+            pauseSession() {
+                this.isPaused = true;
+                this.synth.cancel();
+                this.elements.pauseBtn.textContent = 'Resume';
+                this.elements.currentQuestion.textContent = "Session paused. Click Resume or say 'Continue' to resume.";
+                this.speak("Session paused. Say continue to resume.");
+            }
+            
+            resumeSession() {
+                this.isPaused = false;
+                this.elements.pauseBtn.textContent = 'Pause';
+                this.askCurrentQuestion();
+            }
+            
+            restartPage() {
+                this.currentQuestion = 0;
+                this.speak(`Restarting ${this.pages[this.currentPage].name}.`);
+                setTimeout(() => {
+                    if (this.currentPage === 2) this.showPage2();
+                    else if (this.currentPage === 3) this.showPage3();
+                    else if (this.currentPage === 4) this.showPage4();
+                }, 2000);
+            }
+            
+            moveToNextPage() {
+                if (this.currentPage < 4) {
+                    this.currentPage++;
+                    if (this.currentPage === 2) this.showPage2();
+                    else if (this.currentPage === 3) this.showPage3();
+                    else if (this.currentPage === 4) this.showPage4();
+                }
+            }
+            
+            generateAndReadResume() {
+                // Generate resume from responses
+                const resume = this.buildResumeFromResponses();
+                this.elements.resumePreview.style.display = 'block';
+                this.elements.resumePreview.textContent = resume;
+                
+                this.speak("Here is your resume: " + resume);
+                
+                setTimeout(() => {
+                    this.speak("Would you like to make any changes? If not, say 'finalize' to complete your resume.");
+                }, 5000);
+            }
+            
+            buildResumeFromResponses() {
+                // This is a simplified version - in a real implementation, 
+                // you'd parse responses based on question context
+                return `
+${this.responses[0] || 'Your Name'}
+${this.responses[1] || 'email@example.com'}
+${this.responses[3] || 'Phone Number'}
+
+EDUCATION:
+${this.responses[5] || 'Your Qualification'}
+${this.responses[6] || 'Institution Name'}
+${this.responses[7] || 'Years Attended'}
+
+EXPERIENCE:
+${this.responses[8] || 'Job Title'}
+${this.responses[9] || 'Company Name'}
+${this.responses[10] || 'Key Responsibilities'}
+${this.responses[11] || 'Employment Period'}
+
+SKILLS:
+Technical: ${this.responses[12] || 'Technical Skills'}
+Soft Skills: ${this.responses[13] || 'Soft Skills'}
+
+PROJECTS:
+${this.responses[14] || 'Project Details'}
+
+CERTIFICATES:
+${this.responses[15] || 'Certificates'}
+                `.trim();
+            }
+            
+            startListening() {
+                if (!this.isListening && this.recognition) {
+                    this.recognition.start();
+                }
+            }
+            
+            endSession() {
+                this.speak("Thank you for using BlinkEdge. Your resume journey is complete.");
+                setTimeout(() => {
+                    this.elements.currentQuestion.textContent = "Session ended. Refresh to start again.";
+                    this.updateStatus('speaking');
+                }, 3000);
+            }
+        }
+        
+        // Initialize the BlinkEdge agent when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            window.blinkEdgeAgent = new BlinkEdgeAgent();
+        });
+    </script>
+</body>
+</html>
